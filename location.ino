@@ -1,19 +1,23 @@
 #include <Servo.h> 
 #include <SPI.h>
+#include <math.h> 
 #include "Ucglib.h"           
 // Библиотека для экрана.
 
-#define trigPin   6          // Пин для передачи сигнала на ультразвуковой датчик (Trig), пин 6
+#define trigPin   4          // Пин для передачи сигнала на ультразвуковой датчик (Trig), пин 6
 #define echoPin   5          // Пин для приема сигнала от ультразвукового датчика (Echo), пин 5
 #define ServoPin  3          // Пин для сервопривода основания, пин 3
+#define ServoLaser  6          // Пин для сервопривода лазера, пин 6
+
 int Ymax = 128;               // Высота экрана в пикселях
 int Xmax = 160;               // Ширина экрана в пикселях
 int Xcent = Xmax / 2;         // Середина экрана по горизонтали
 int base = 118;               // Высота базовой линии
 int scanline = 105;           // Длина луча радара
-int ledPin = 2;               // пин длялазера
+int ledPin = 12;               // пин для лазера
 
 Servo baseServo; 
+Servo laserServo; 
 Ucglib_ST7735_18x128x160_HWSPI ucg(/*cd=*/ 9, /*cs=*/ 10, /*reset=*/ 8);
 
 void setup(void)
@@ -27,6 +31,7 @@ void setup(void)
       pinMode(ledPin, OUTPUT);
       Serial.begin(115200);             // Настройка скорости передачи через последовательный порт
       baseServo.attach(ServoPin);     // Инициализация сервопривода
+      laserServo.attach(ServoLaser);     // Инициализация сервопривода
     
       // Экран приветствия
       ucg.setFontMode(UCG_FONT_MODE_TRANSPARENT);
@@ -48,11 +53,13 @@ void setup(void)
       ucg.setPrintPos(40,100);
       ucg.print("Testing...");
       baseServo.write(90);
+      laserServo.write(90);
       ucg.setColor(0, 255, 0);
     
       // Проверка работы сервопривода. Убедитесь, что базовая позиция и вращение не блокируются (или что кабель не перекручен).
       for(int x=0;x<180;x+=5)
           { baseServo.write(x);
+            laserServo.write(x);
             delay(50);
            }
       ucg.print("OK!");
