@@ -8,13 +8,20 @@
 #define echoPin   5          // Пин для приема сигнала от ультразвукового датчика (Echo), пин 5
 #define ServoPin  3          // Пин для сервопривода основания, пин 3
 #define ServoLaser  6          // Пин для сервопривода лазера, пин 6
+#define ledPin  2          // Пин для сервопривода лазера, пин 6
 
 int Ymax = 128;               // Высота экрана в пикселях
 int Xmax = 160;               // Ширина экрана в пикселях
 int Xcent = Xmax / 2;         // Середина экрана по горизонтали
 int base = 118;               // Высота базовой линии
 int scanline = 105;           // Длина луча радара
-int ledPin = 12;               // пин для лазера
+double laserDist;                      //  расстояние от лазера до препятствия
+int laserAngle;                      // угол поворота лазера
+double distance;
+const float y = 40.866;                      // расстояние между осями вращения лазера и радара
+const int maxDist = 30;       // Ограничение дальности действия
+bool trackingMode = false;
+int angleError;             // поправка на ошибку определения датчика из-за диаграммы направленности
 
 Servo baseServo; 
 Servo laserServo; 
@@ -22,13 +29,15 @@ Ucglib_ST7735_18x128x160_HWSPI ucg(/*cd=*/ 9, /*cs=*/ 10, /*reset=*/ 8);
 
 void setup(void)
 {
- 
+     
       ucg.begin(UCG_FONT_MODE_SOLID); // Инициализация экрана
       ucg.setRotate90();              // Поворот экрана в горизонтальное положение. Если изображение перевернуто, вы можете изменить setRotate90 или setRotate270.
       
       pinMode(trigPin, OUTPUT);       // Установка пина для Trig в режим вывода
       pinMode(echoPin, INPUT);        // Установка пина для Echo в режим ввода
       pinMode(ledPin, OUTPUT);
+      pinMode(ServoLaser, OUTPUT);
+      digitalWrite(ledPin, 0);
       Serial.begin(115200);             // Настройка скорости передачи через последовательный порт
       baseServo.attach(ServoPin);     // Инициализация сервопривода
       laserServo.attach(ServoLaser);     // Инициализация сервопривода
@@ -116,6 +125,36 @@ void fix_font()
       ucg.setPrintPos(70,90);
       ucg.print("0.25");
 }
+void calculateLaser(int angle)
+{
+  angleError = map(angle, 0, 180, 50, 0);
+  //laserServo.attach(ServoLaser);
+  if ((angle > 0) && (distance < maxDist)){
+    laserDist = sqrtf(pow(distance,2)+pow(y, 2)-2*distance*y*cos(radians(angle)));
+    laserAngle = degrees(acos(((y*y+laserDist*laserDist-distance*distance)/(2*laserDist*y))));
+    //  Отладочный вывод: угол и расстояние
+    Serial.print("distance: ");
+    Serial.println(distance);
+    Serial.print("laserDist: ");
+    Serial.println(laserDist);
+    Serial.print("Angle: ");
+    Serial.println(angle);
+    laserAngle = 180 - laserAngle;
+    Serial.print("laserAngle: ");
+    Serial.println(laserAngle);
+
+    
+    if ((laserAngle != 0) && (trackingMode == false)){
+      laserServo.write(angle);
+      digitalWrite(ledPin, 1);
+      trackingMode = true;
+      //laserServo.detach();
+    }
+  
+    // return laserAngle;
+  }
+  
+}
 
 void fix()
 {
@@ -180,14 +219,16 @@ void fix()
 void loop(void)
 {
   
-  int distance;
+  // int distance;
   
   fix(); 
   fix_font();  // Обновляем фон экрана
-
+  laserServo.attach(ServoLaser);
   for (int x=180; x > 4; x-=2){       // Сервопривод основания двигается от 180 до 0 градусов
      
       baseServo.write(x);             // Устанавливаем угол сервопривода
+      
+      calculateLaser(x);              // Рассчитываем угол поворота лазера
       
       // Рисуем линию сканирования радара
       int f = x - 4; 
@@ -204,7 +245,7 @@ void loop(void)
       distance = calculateDistance();
      
       // Рисуем точку в соответствии с измеренным расстоянием
-      if (distance < 100)
+      if (distance < maxDist)
       {
         ucg.setColor(255,0,0);
         ucg.drawDisc(distance*cos(radians(x))+Xcent,-distance*sin(radians(x))+base, 1, UCG_DRAW_ALL);
@@ -217,9 +258,9 @@ void loop(void)
     
            
       // Отладочный вывод: угол и расстояние
-      Serial.print(x); 
-      Serial.print("    ,   ");
-      Serial.println(distance); 
+      // Serial.print(x); 
+      // Serial.print("    ,   ");
+      // Serial.println(distance); 
      
 
       if (x > 70 and x < 110)  fix_font();  // Перерисовываем числа, когда линия сканирования пересекает числа
@@ -236,15 +277,20 @@ void loop(void)
       ucg.print("cm  "); 
       
   }
+  digitalWrite(ledPin, LOW);
+  trackingMode = false;
+  
   //ucg.clearScreen();  // Очищаем экран. Если уровень питания Arduino недостаточен, это может вызвать белый экран (прерывание сигнала отображения). Вы можете использовать cls(); вместо ucg.clearScreen(); 
   delay(50);
   cls();   // Если у вас часто возникают проблемы с белым экраном, вы можете использовать эту функцию, или увеличить мощность питания.
 
   fix(); 
   fix_font();          // Обновляем фон экрана
-  
+  laserServo.attach(ServoLaser);
   for (int  x=1; x < 176; x+=2){     
       baseServo.write(x);             // Устанавливаем угол сервопривода
+      
+      calculateLaser(x);              // Рассчитываем угол поворота лазера
       
       // Рисуем линию сканирования радара
       int f = x + 4;
@@ -262,7 +308,7 @@ void loop(void)
       distance = calculateDistance();
 
       // Рисуем точку в соответствии с измеренным расстоянием
-      if (distance < 100)
+      if (distance < maxDist)
       {
         ucg.setColor(255,0,0);
         ucg.drawDisc(distance*cos(radians(x))+Xcent,-distance*sin(radians(x))+base, 1, UCG_DRAW_ALL);
@@ -274,9 +320,9 @@ void loop(void)
       }
            
       // Отладочный вывод: угол и расстояние  
-      Serial.print(x); 
-      Serial.print("    ,   ");
-      Serial.println(distance); 
+      // Serial.print(x); 
+      // Serial.print("    ,   ");
+      // Serial.println(distance); 
      
       if (x > 70 and x < 110)  fix_font();  // Перерисовываем числа, когда линия сканирования пересекает числа
       
@@ -292,6 +338,8 @@ void loop(void)
       ucg.print("cm   "); 
   
   }
+  digitalWrite(ledPin, LOW);
+  trackingMode = false;
  //ucg.clearScreen(); //
  delay(50);
  cls();
