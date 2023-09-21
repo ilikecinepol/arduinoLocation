@@ -4,8 +4,8 @@
 #include "Ucglib.h"           
 // Библиотека для экрана.
 
-#define trigPin   4          // Пин для передачи сигнала на ультразвуковой датчик (Trig), пин 6
-#define echoPin   5          // Пин для приема сигнала от ультразвукового датчика (Echo), пин 5
+#define trigPin   5          // Пин для передачи сигнала на ультразвуковой датчик (Trig), пин 6
+#define echoPin   4          // Пин для приема сигнала от ультразвукового датчика (Echo), пин 5
 #define ServoPin  3          // Пин для сервопривода основания, пин 3
 #define ServoLaser  6          // Пин для сервопривода лазера, пин 6
 #define ledPin  2          // Пин для сервопривода лазера, пин 6
@@ -18,10 +18,14 @@ int scanline = 105;           // Длина луча радара
 double laserDist;                      //  расстояние от лазера до препятствия
 int laserAngle;                      // угол поворота лазера
 double distance;
-const float y = 40.866;                      // расстояние между осями вращения лазера и радара
+const float y = 4;                      // расстояние между осями вращения лазера и радара
 const int maxDist = 30;       // Ограничение дальности действия
 bool trackingMode = false;
-int angleError;             // поправка на ошибку определения датчика из-за диаграммы направленности
+int angleError;             // поправка на ошибку определения датчика из-за диаграммы направленности    
+bool obstacleDetected = false;
+int startAngle;
+int endAngle;
+int goalAngle;
 
 Servo baseServo; 
 Servo laserServo; 
@@ -114,7 +118,47 @@ int calculateDistance()
       // Преобразуем время в расстояние
       return duration*0.034/2;
 }
+int goalDist;
+void shot(int angle, int duration){
+  
+  
+  //Serial.println(duration);
+  if ((duration > 3) and (duration < maxDist) and (endAngle == 0)){
+    
+    if (obstacleDetected == false){
+      startAngle = angle;
+      Serial.print('startAngle: ');
+      Serial.println(startAngle);
+    }
+    obstacleDetected = true;
+    goalDist = duration;
+    Serial.println('1');
+    Serial.println(goalDist);
+  }
+  if ((obstacleDetected == true) and (duration > goalDist) and (endAngle == 0)){
+    obstacleDetected = false;
+    endAngle = angle;
+    Serial.println('2');
+    if ((startAngle != 0) and (endAngle != 0)){
+    goalAngle = ((startAngle + endAngle) / 2);
+    laserServo.write(goalAngle);
+    digitalWrite(ledPin, HIGH);
+    Serial.println('4');
+  }
+  }
+  
+  if (obstacleDetected == false){
+    startAngle = 0;
+    endAngle = 0;
+    goalDist = 0;
+    //digitalWrite(ledPin, LOW);
+    Serial.println('3');
+  }
+  
 
+  //digitalWrite(ledPin, HIGH);
+  
+}
 void fix_font() 
 {
       ucg.setColor(0, 180, 0);
@@ -125,9 +169,12 @@ void fix_font()
       ucg.setPrintPos(70,90);
       ucg.print("0.25");
 }
-void calculateLaser(int angle)
+void calculateLaser(int angle, bool clockwise)
 {
-  angleError = map(angle, 0, 180, 50, 0);
+  angleError = map(angle, 0, 180, 60, 0);
+  if (clockwise == true){
+    angleError = - angleError;
+  }
   //laserServo.attach(ServoLaser);
   if ((angle > 0) && (distance < maxDist)){
     laserDist = sqrtf(pow(distance,2)+pow(y, 2)-2*distance*y*cos(radians(angle)));
@@ -145,10 +192,12 @@ void calculateLaser(int angle)
 
     
     if ((laserAngle != 0) && (trackingMode == false)){
-      laserServo.write(angle);
-      digitalWrite(ledPin, 1);
       trackingMode = true;
-      //laserServo.detach();
+      laserServo.attach(ServoLaser);
+      laserServo.write(angle + angleError);
+      // digitalWrite(ledPin, 1);
+      
+      // laserServo.detach();
     }
   
     // return laserAngle;
@@ -214,8 +263,18 @@ void fix()
        ucg.drawTetragon(72,123,68,127,88,127,92,123);
 }
 
-
-
+void tracking()
+{
+  if (trackingMode == false)
+  {
+    laserServo.detach();
+    //digitalWrite(ledPin, LOW);
+  }
+  else{
+    laserServo.attach(ServoLaser);
+    //digitalWrite(ledPin, LOW);
+  }
+}
 void loop(void)
 {
   
@@ -226,9 +285,7 @@ void loop(void)
   laserServo.attach(ServoLaser);
   for (int x=180; x > 4; x-=2){       // Сервопривод основания двигается от 180 до 0 градусов
      
-      baseServo.write(x);             // Устанавливаем угол сервопривода
-      
-      calculateLaser(x);              // Рассчитываем угол поворота лазера
+      baseServo.write(x);             // Устанавливаем угол сервопривод
       
       // Рисуем линию сканирования радара
       int f = x - 4; 
@@ -243,7 +300,7 @@ void loop(void)
       ucg.setColor(0,200, 0);
       // Измеряем расстояние
       distance = calculateDistance();
-     
+      shot(x, distance);
       // Рисуем точку в соответствии с измеренным расстоянием
       if (distance < maxDist)
       {
@@ -289,8 +346,7 @@ void loop(void)
   laserServo.attach(ServoLaser);
   for (int  x=1; x < 176; x+=2){     
       baseServo.write(x);             // Устанавливаем угол сервопривода
-      
-      calculateLaser(x);              // Рассчитываем угол поворота лазера
+
       
       // Рисуем линию сканирования радара
       int f = x + 4;
@@ -306,7 +362,7 @@ void loop(void)
       // Измеряем расстояние
 
       distance = calculateDistance();
-
+      shot(x, distance);
       // Рисуем точку в соответствии с измеренным расстоянием
       if (distance < maxDist)
       {
