@@ -19,7 +19,7 @@ double laserDist;                      //  расстояние от лазер�
 int laserAngle;                      // угол поворота лазера
 double distance;
 const float y = 4;                      // расстояние между осями вращения лазера и радара
-const int maxDist = 30;       // Ограничение дальности действия
+const int maxDist = 35;       // Ограничение дальности действия
 bool trackingMode = false;
 int angleError;             // поправка на ошибку определения датчика из-за диаграммы направленности    
 bool obstacleDetected = false;
@@ -119,8 +119,8 @@ int calculateDistance()
       return duration*0.034/2;
 }
 int goalDist;
-void shot(int angle, int duration){
-  
+void shot(int angle, int duration, bool clock){
+  int k = -0;
   
   //Serial.println(duration);
   if ((duration > 3) and (duration < maxDist) and (endAngle == 0)){
@@ -136,12 +136,16 @@ void shot(int angle, int duration){
     Serial.println(goalDist);
   }
   if ((obstacleDetected == true) and (duration > goalDist) and (endAngle == 0)){
-    obstacleDetected = false;
-    endAngle = angle;
-    Serial.println('2');
-    if ((startAngle != 0) and (endAngle != 0)){
-    goalAngle = ((startAngle + endAngle) / 2);
-    laserServo.write(goalAngle);
+    if (clock == false){
+      k = -k;
+    }
+
+      obstacleDetected = false;
+      endAngle = angle;
+      Serial.println('2');
+      if ((startAngle != 0) and (endAngle != 0)){
+      goalAngle = ((startAngle + endAngle) / 3);
+      laserServo.write(goalAngle);
     digitalWrite(ledPin, HIGH);
     Serial.println('4');
   }
@@ -300,7 +304,7 @@ void loop(void)
       ucg.setColor(0,200, 0);
       // Измеряем расстояние
       distance = calculateDistance();
-      shot(x, distance);
+      shot(x, distance, false);
       // Рисуем точку в соответствии с измеренным расстоянием
       if (distance < maxDist)
       {
@@ -362,7 +366,7 @@ void loop(void)
       // Измеряем расстояние
 
       distance = calculateDistance();
-      shot(x, distance);
+      shot(x, distance, true);
       // Рисуем точку в соответствии с измеренным расстоянием
       if (distance < maxDist)
       {
